@@ -9,8 +9,8 @@
  * published by the Free Software Foundation.
  */
 
-#ifndef _PLATFORM_H_
-#define _PLATFORM_H_
+#ifndef _MC_PLATFORM_H_
+#define _MC_PLATFORM_H_
 
 /* MobiCore Interrupt for Qualcomm */
 #define MC_INTR_SSIQ						280
@@ -34,7 +34,7 @@ static inline int smc_fastcall(void *fc_generic, size_t size)
 			fc_generic, size);
 }
 
-/* Enable MobiCore mem traces */
+/* Enable mobicore mem traces */
 #define MC_MEM_TRACES
 
-#endif /* _PLATFORM_H_ */
+#endif /* _MC_PLATFORM_H_ */
