@@ -48,6 +48,8 @@ struct mc_buffer {
 	atomic_t		usage;
 	/* virtual Kernel start address */
 	void			*addr;
+	/* virtual Userspace start address */
+	void			*uaddr;
 	/* physical start address */
 	void			*phys;
 	/* order of number of pages */

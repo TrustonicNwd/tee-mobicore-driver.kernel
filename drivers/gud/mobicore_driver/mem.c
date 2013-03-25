@@ -352,17 +352,7 @@ static int map_buffer(struct task_struct *task, void *wsm_buffer,
 		return -EINVAL;
 	}
 
-	MCDRV_DBG_VERBOSE(mcd, "WSM addr=0x%p, len=0x%08x\n", wsm_buffer,
-			  wsm_len);
-
-	/*
-	 * Check if called from kernel space and if
-	 * wsm_buffer is actually vmalloced or not
-	 */
-	if (task == NULL && !is_vmalloc_addr(wsm_buffer)) {
-		MCDRV_DBG_ERROR(mcd, "WSM addr is not a vmalloc address");
-		return -EINVAL;
-	}
+	MCDRV_DBG_VERBOSE("WSM addr=0x%p, len=0x%08x\n", wsm_buffer, wsm_len);
 
 	/* calculate page usage */
 	virt_addr_page = (void *)(((unsigned long)(wsm_buffer)) & PAGE_MASK);
@@ -403,6 +393,20 @@ static int map_buffer(struct task_struct *task, void *wsm_buffer,
 		if (ret != 0) {
 			MCDRV_DBG_ERROR(mcd, "lock_user_pages() failed\n");
 			return ret;
+		}
+	}
+	/* Request comes from kernel space(cont buffer) */
+	else if (task == NULL && !is_vmalloc_addr(wsm_buffer)) {
+		void *uaddr = wsm_buffer;
+		for (i = 0; i < nr_of_pages; i++) {
+			page = virt_to_page(uaddr);
+			if (!page) {
+				MCDRV_DBG_ERROR(mcd, "failed to map address");
+				return -EINVAL;
+			}
+			get_page(page);
+			l2table_as_array_of_pointers_to_page[i] = page;
+			uaddr += PAGE_SIZE;
 		}
 	}
 	/* Request comes from kernel space(vmalloc buffer) */
