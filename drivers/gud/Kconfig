@@ -28,4 +28,3 @@ config MOBICORE_API
     depends on MOBICORE_SUPPORT
     ---help---
       Enable Linux Kernel MobiCore API
-
