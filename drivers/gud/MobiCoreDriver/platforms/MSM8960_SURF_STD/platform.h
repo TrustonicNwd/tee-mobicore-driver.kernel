@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 TRUSTONIC LIMITED
+ * Copyright (c) 2013-2014 TRUSTONIC LIMITED
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -20,6 +20,8 @@
  * Header file the MobiCore Driver Kernel Module,
  * its internal structures and defines.
  */
+
+
 #ifndef _MC_PLATFORM_H_
 #define _MC_PLATFORM_H_
 
@@ -30,12 +32,7 @@
 #define MC_SMC_FASTCALL
 
 /*--------------- Implementation -------------- */
-#ifdef CONFIG_ARCH_APQ8084
 #include <soc/qcom/scm.h>
-#else
-#include <mach/scm.h>
-#endif
-
 /* from following file */
 #define SCM_SVC_MOBICORE		250
 #define SCM_CMD_MOBICORE		1
@@ -60,9 +57,10 @@ static inline int smc_fastcall(void *fc_generic, size_t size)
 #define MC_VM_UNMAP
 #endif
 
-#if defined(CONFIG_ARCH_MSM8974) || defined(CONFIG_ARCH_MSM8226) || \
-defined(CONFIG_ARCH_APQ8084)
-/* Perform clock enable/disable */
+/*
+ *  Perform crypto clock enable/disable
+ */
+#ifndef CONFIG_ARCH_MSM8960
 #define MC_CRYPTO_CLOCK_MANAGEMENT
 #endif
 
