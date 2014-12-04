@@ -23,6 +23,8 @@
 #include <linux/device.h>
 #include <linux/workqueue.h>
 #include <linux/cpu.h>
+#include <linux/moduleparam.h>
+
 
 #include "main.h"
 #include "fastcall.h"
@@ -35,6 +37,16 @@
 static struct mc_context *ctx;
 #ifdef TBASE_CORE_SWITCHER
 static uint32_t active_cpu;
+
+#ifdef TEST
+	/*
+	 * Normal world <t-base core info for testing.
+	 */
+
+	module_param(active_cpu, int, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	MODULE_PARM_DESC(active_cpu, "Active <t-base Core");
+#endif
+
 
 static int mobicore_cpu_callback(struct notifier_block *nfb,
 				 unsigned long action, void *hcpu);
@@ -231,6 +243,12 @@ int mc_info(uint32_t ext_info_id, uint32_t *state, uint32_t *ext_info)
 }
 
 #ifdef TBASE_CORE_SWITCHER
+
+uint32_t mc_active_core(void)
+{
+	return active_cpu;
+}
+
 int mc_switch_core(uint32_t core_num)
 {
 	int32_t ret = 0;

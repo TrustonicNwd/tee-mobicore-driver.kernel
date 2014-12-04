@@ -106,11 +106,6 @@ static void *get_mmu_table_kernel_virt(struct mc_mmu_table *table)
 	return &(table->set->kernel_virt->table[table->idx]);
 }
 
-static inline int in_use(struct mc_mmu_table *table)
-{
-	return atomic_read(&table->usage) > 0;
-}
-
 /*
  * Search the list of used MMU tables and return the one with the handle.
  * Assumes the table_lock is taken.
@@ -241,7 +236,7 @@ static struct mc_mmu_table *alloc_mmu_table(struct mc_instance *instance)
 	/* Move it to the used MMU tables list */
 	list_move_tail(&table->list, &mem_ctx.mmu_tables);
 
-	table->handle = get_unique_id();
+	table->handle = get_new_buffer_handle();
 	table->owner = instance;
 
 	atomic_inc(&table->set->used_tables);
@@ -435,10 +430,6 @@ static int map_buffer(struct task_struct *task, void *wsm_buffer,
 		if (i < nr_of_pages) {
 #ifdef LPAE_SUPPORT
 			uint64_t pte;
-#elif defined(CONFIG_ARM_LPAE) && !defined(LPAE_SUPPORT)
-			/* Nwd supports 64bit addresses, SWD only 32bit */
-			uint64_t pte64;
-			uint32_t pte;
 #else
 			uint32_t pte;
 #endif
@@ -453,8 +444,8 @@ static int map_buffer(struct task_struct *task, void *wsm_buffer,
 			 * http://lwn.net/Articles/409032/
 			 * is also worth reading.
 			 */
-#ifdef LPAE_SUPPORT
 			pte = page_to_phys(page);
+#ifdef LPAE_SUPPORT
 			pte |=	MMU_EXT_XN
 				| MMU_EXT_NG
 				| MMU_EXT_AF
@@ -462,24 +453,7 @@ static int map_buffer(struct task_struct *task, void *wsm_buffer,
 				| MMU_NS
 				| MMU_CACHEABLE | MMU_BUFFERABLE
 				| MMU_TYPE_PAGE;
-#elif defined(CONFIG_ARM_LPAE) && !defined(LPAE_SUPPORT)
-			/*
-			 * NWD uses 64bit addresses but SWD can handle only
-			 * short descriptors
-			 * and physical addresses not bigger than 4GB
-			 */
-			 pte64 = page_to_phys(page);
-			 if ((pte64 >> 32) != 0) {
-				MCDRV_DBG_ERROR(mcd,
-						"physical addresses bigger than 4GB not supported");
-				return -EINVAL;
-				}
-			pte = (uint32_t)pte64;
-			pte |= MMU_EXT_AP1 | MMU_EXT_AP0
-				| MMU_CACHEABLE | MMU_BUFFERABLE
-				| MMU_TYPE_SMALL | MMU_TYPE_EXT | MMU_EXT_NG;
 #else
-			pte = page_to_phys(page);
 			pte |= MMU_EXT_AP1 | MMU_EXT_AP0
 				| MMU_CACHEABLE | MMU_BUFFERABLE
 				| MMU_TYPE_SMALL | MMU_TYPE_EXT | MMU_EXT_NG;
@@ -533,8 +507,10 @@ static void unmap_buffers(struct mc_mmu_table *table)
 	/* release all locked user space pages */
 	for (i = 0; i < table->pages; i++) {
 		/* convert physical entries from MMU table to page pointers */
-		struct page *page;
-		page = phys_to_page(mmutable->table_entries[i]);
+		struct page *page = pte_page(mmutable->table_entries[i]);
+		MCDRV_DBG_VERBOSE(mcd, "MMU entry %d:  0x%llx, virt %p", i,
+				  (u64)(mmutable->table_entries[i]), page);
+		BUG_ON(!page);
 		release_page(page);
 	}
 

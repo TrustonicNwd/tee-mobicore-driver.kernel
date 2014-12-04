@@ -60,7 +60,7 @@ struct mc_ioctl_map {
 	size_t		len;	/* Buffer length */
 	uint32_t	handle;	/* WSM handle */
 	uint64_t	phys_addr; /* physical address of WSM (or 0) */
-	unsigned long	addr;	/* Virtual address */
+	unsigned long   rfu;
 	bool		reused;	/* if WSM memory was reused, or new allocated */
 };
 

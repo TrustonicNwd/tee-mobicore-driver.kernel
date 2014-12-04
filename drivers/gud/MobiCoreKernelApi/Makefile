@@ -32,6 +32,18 @@ ifeq ($(PLATFORM), EXYNOS_5430_STD)
 	ccflags-y += -DMC_NETLINK_COMPAT_V37
 endif
 
+ifeq ($(PLATFORM), MSM8916_SURF_STD)
+	ccflags-y += -DMC_NETLINK_COMPAT_V37
+endif
+
+ifeq ($(PLATFORM), MSM8x10-12_SURF_STD)
+	ccflags-y += -DMC_NETLINK_COMPAT_V37
+endif
+
+ifeq ($(PLATFORM), MSM8084_SURF_STD)
+	ccflags-y += -DMC_NETLINK_COMPAT_V37
+endif
+
 #EXTRA_CFLAGS += -DDEBUG -DDEBUG_VERBOSE
 #EXTRA_CFLAGS += -Wno-declaration-after-statement
 ccflags-y += -Wno-declaration-after-statement

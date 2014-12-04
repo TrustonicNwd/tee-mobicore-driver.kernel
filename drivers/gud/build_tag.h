@@ -12,4 +12,4 @@
  * GNU General Public License for more details.
  */
 #define MOBICORE_COMPONENT_BUILD_TAG \
-		"*** t-base-300-QC-8974-Android-V005 ###"
+		"*** t-base-QC-MSM8084-Andro-300-V003 ###"
