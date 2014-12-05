@@ -20,7 +20,11 @@
 #define MC_SMC_FASTCALL
 
 /*--------------- Implementation -------------- */
+#if defined(CONFIG_ARCH_APQ8084) || defined(CONFIG_ARCH_MSM8916)
+#include <soc/qcom/scm.h>
+#else
 #include <mach/scm.h>
+#endif
 /* from following file */
 #define SCM_SVC_MOBICORE		250
 #define SCM_CMD_MOBICORE		1
@@ -45,7 +49,7 @@ static inline int smc_fastcall(void *fc_generic, size_t size)
 #define MC_VM_UNMAP
 #endif
 
-#if defined(CONFIG_ARCH_MSM8974) || defined(CONFIG_ARCH_MSM8226)
+#ifndef CONFIG_ARCH_MSM8960
 /* Perform clock enable/disable */
 #define MC_CRYPTO_CLOCK_MANAGEMENT
 #endif

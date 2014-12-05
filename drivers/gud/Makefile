@@ -22,6 +22,7 @@ mcKernelApi-objs := MobiCoreKernelApi/main.o \
 # Release mode by default
 ccflags-y := -DNDEBUG -I$(GUD_ROOT_FOLDER)
 ccflags-y += -Wno-declaration-after-statement
+ccflags-y += -DMC_NETLINK_COMPAT_V37
 
 ccflags-$(CONFIG_MOBICORE_DEBUG) += -DDEBUG
 ccflags-$(CONFIG_MOBICORE_VERBOSE) += -DDEBUG_VERBOSE
