@@ -20,7 +20,8 @@
 #define MC_SMC_FASTCALL
 
 /*--------------- Implementation -------------- */
-#if defined(CONFIG_ARCH_APQ8084) || defined(CONFIG_ARCH_MSM8916)
+#if defined(CONFIG_ARCH_APQ8084) || defined(CONFIG_ARCH_MSM8916) || \
+defined(CONFIG_ARCH_MSM8909)
 #include <soc/qcom/scm.h>
 #else
 #include <mach/scm.h>
