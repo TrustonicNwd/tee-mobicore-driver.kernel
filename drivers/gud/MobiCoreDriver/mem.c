@@ -590,8 +590,11 @@ int mc_free_mmu_table(struct mc_instance *instance, uint32_t handle)
 		ret = -EINVAL;
 		goto err_unlock;
 	}
-	if (instance != table->owner && !is_daemon(instance)) {
-		MCDRV_DBG_ERROR(mcd, "instance does no own it");
+	if (instance == table->owner) {
+		/* Prevent double free */
+		table->owner = NULL;
+	} else if (!is_daemon(instance)) {
+		MCDRV_DBG_ERROR(mcd, "instance does not own it");
 		ret = -EPERM;
 		goto err_unlock;
 	}
