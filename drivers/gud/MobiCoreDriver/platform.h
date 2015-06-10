@@ -147,4 +147,3 @@ static inline int smc_fastcall(void *fc_generic, size_t size)
 #endif /* not CONFIG_ARCH_MSM8996 */
 
 #endif /* _MC_PLATFORM_H_ */
-
