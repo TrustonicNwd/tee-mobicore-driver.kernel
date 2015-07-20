@@ -23,9 +23,6 @@ mcKernelApi-objs := MobiCoreKernelApi/main.o \
 ccflags-y := -DNDEBUG -I$(GUD_ROOT_FOLDER)
 ccflags-y += -Wno-declaration-after-statement
 
-#Netlink changed arguments number
-ccflags-y += -DMC_NETLINK_COMPAT_V37
-
 ccflags-$(CONFIG_MOBICORE_DEBUG) += -DDEBUG
 ccflags-$(CONFIG_MOBICORE_VERBOSE) += -DDEBUG_VERBOSE
 
@@ -38,3 +35,7 @@ ccflags-y += -I$(GUD_ROOT_FOLDER)/MobiCoreDriver/public
 # MobiCore KernelApi required incldes
 ccflags-y += -I$(GUD_ROOT_FOLDER)/MobiCoreKernelApi/include
 ccflags-y += -I$(GUD_ROOT_FOLDER)/MobiCoreKernelApi/public
+
+
+ccflags-y += -DMC_NETLINK_COMPAT_V37
+

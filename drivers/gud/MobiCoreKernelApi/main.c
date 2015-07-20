@@ -149,7 +149,7 @@ static int __init mcapi_init(void)
 
 	dev_info(mc_kapi, "Mobicore API module initialized!\n");
 
-	mod_ctx = kzalloc(sizeof(struct mc_kernelapi_ctx), GFP_KERNEL);
+	mod_ctx = kzalloc(sizeof(*mod_ctx), GFP_KERNEL);
 	if (mod_ctx == NULL) {
 		MCDRV_DBG_ERROR(mc_kapi, "Allocation failure");
 		return -ENOMEM;

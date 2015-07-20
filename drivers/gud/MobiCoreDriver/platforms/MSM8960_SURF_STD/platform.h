@@ -31,7 +31,7 @@
 
 /*--------------- Implementation -------------- */
 #if defined(CONFIG_ARCH_APQ8084) || defined(CONFIG_ARCH_MSM8916) || \
-	defined(CONFIG_ARCH_MSM8994)
+	defined(CONFIG_ARCH_MSM8994) || defined(CONFIG_ARCH_MSM8909)
 
 #include <soc/qcom/scm.h>
 
