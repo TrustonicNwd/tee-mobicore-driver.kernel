@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2014 TRUSTONIC LIMITED
+ * Copyright (c) 2013-2015 TRUSTONIC LIMITED
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -100,12 +100,16 @@ static inline int smc_fastcall(void *fc_generic, size_t size)
  * as long as the __aarch32__ flag is not activated in SW.
  * But for 8996, architecture is armv8 with __aarch32__ in Sw.
  */
-#if !defined(CONFIG_ARCH_MSM8996)
+ /* Maybe not needed as the SWD was already modified */
+/* #if !defined(CONFIG_ARCH_MSM8996)
 #define MC_ARMV7_FC
 #endif
+*/
 
 #if defined(CONFIG_ARCH_MSM8996)
+#ifndef CONFIG_TRUSTONIC_TEE_LPAE
 #define CONFIG_TRUSTONIC_TEE_LPAE
+#endif
 #endif
 
 /*
@@ -115,8 +119,7 @@ static inline int smc_fastcall(void *fc_generic, size_t size)
  *     "core_clk"
  *     "iface_clk"
  */
-#if (!defined(CONFIG_ARCH_MSM8960) && !defined(CONFIG_ARCH_MSM8994)) || \
-		defined(CONFIG_ARCH_MSM8996)
+#if !defined(CONFIG_ARCH_MSM8994) || defined(CONFIG_ARCH_MSM8996)
 #define MC_CRYPTO_CLOCK_MANAGEMENT
 #endif
 
@@ -131,7 +134,6 @@ static inline int smc_fastcall(void *fc_generic, size_t size)
 #define MC_CLOCK_CORESRC_DEFAULTRATE 100000000
 #endif /* MC_CRYPTO_CLOCK_MANAGEMENT */
 #endif
-
 
 #if !defined(CONFIG_ARCH_MSM8996)
 /* uid/gid behave like old kernels but with new types */

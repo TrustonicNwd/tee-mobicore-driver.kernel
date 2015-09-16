@@ -33,25 +33,17 @@
 #include "mci/mcloadformat.h"
 
 #include "main.h"
-#include "debug.h"
 #include "mmu.h"	/* For load_check and load_token */
 #include "mcp.h"
 #include "client.h"
-#include "api.h"
 #include "admin.h"
 
-/* We need 2 devices for admin and user interface*/
-#define MC_DEV_MAX 2
-
 static struct admin_ctx {
-	struct device *dev;
 	atomic_t daemon_counter;
-	/* Define a MobiCore device structure for use with dev_debug() etc */
-	struct device_driver mc_dev_name;
-	dev_t mc_dev_admin;
-	struct cdev mc_admin_cdev;
 	int (*tee_start_cb)(void);
-} g_admin_ctx;
+	void (*tee_stop_cb)(void);
+	int last_start_ret;
+} admin_ctx;
 
 static struct mc_admin_driver_request {
 	/* Global */
@@ -70,7 +62,7 @@ static struct mc_admin_driver_request {
 		DATA_SENT,		/* Blocked until data is consumed */
 	} server_state;
 	/* Request */
-	uint32_t request_id;
+	u32 request_id;
 	struct mc_admin_request request;
 	struct completion client_complete;
 	/* Response */
@@ -80,10 +72,9 @@ static struct mc_admin_driver_request {
 	size_t size;			/* Size of the reception buffer */
 } g_request;
 
-static struct tbase_object *tbase_object_alloc(bool is_sp_trustlet,
-					       size_t length)
+static struct tee_object *tee_object_alloc(bool is_sp_trustlet, size_t length)
 {
-	struct tbase_object *obj;
+	struct tee_object *obj;
 	size_t size = sizeof(*obj) + length;
 	size_t header_length = 0;
 
@@ -105,7 +96,7 @@ static struct tbase_object *tbase_object_alloc(bool is_sp_trustlet,
 	return obj;
 }
 
-void tbase_object_free(struct tbase_object *robj)
+void tee_object_free(struct tee_object *robj)
 {
 	vfree(robj);
 }
@@ -146,10 +137,9 @@ static inline bool server_state_is(enum server_state state)
 
 static void request_cancel(void);
 
-static int request_send(uint32_t command, const struct mc_uuid_t *uuid,
-			uint32_t is_gp, uint32_t spid)
+static int request_send(u32 command, const struct mc_uuid_t *uuid, bool is_gp,
+			u32 spid)
 {
-	struct device *dev = g_admin_ctx.dev;
 	int counter = 10;
 	int ret;
 
@@ -166,13 +156,12 @@ static int request_send(uint32_t command, const struct mc_uuid_t *uuid,
 	if (g_request.server_state != READY) {
 		mutex_unlock(&g_request.states_mutex);
 		if (g_request.server_state != NOT_CONNECTED) {
-			/* TODO: can we recover? */
-			dev_err(dev, "%s: invalid daemon state %d\n", __func__,
-				g_request.server_state);
+			mc_dev_err("invalid daemon state %d\n",
+				   g_request.server_state);
 			ret = -EPROTO;
 			goto end;
 		} else {
-			dev_err(dev, "%s: daemon not connected\n", __func__);
+			mc_dev_err("daemon not connected\n");
 			ret = -ENOTCONN;
 			goto end;
 		}
@@ -216,8 +205,8 @@ static int request_send(uint32_t command, const struct mc_uuid_t *uuid,
 		break;
 	default:
 		/* Should not happen as complete means the state changed */
-		dev_err(dev, "%s: daemon is in a bad state: %d\n", __func__,
-			g_request.server_state);
+		mc_dev_err("daemon is in a bad state: %d\n",
+			   g_request.server_state);
 		ret = -EPIPE;
 		break;
 	}
@@ -231,7 +220,7 @@ end:
 	return ret;
 }
 
-static int request_receive(void *address, uint32_t size)
+static int request_receive(void *address, u32 size)
 {
 	/*
 	 * At this point we have received the header and prepared some buffers
@@ -246,7 +235,6 @@ static int request_receive(void *address, uint32_t size)
 		    (g_request.server_state == DATA_SENT);
 	mutex_unlock(&g_request.states_mutex);
 	if (!server_ok) {
-		/* TODO: can we recover? */
 		request_cancel();
 		return -EPIPE;
 	}
@@ -286,7 +274,6 @@ static void request_cancel(void)
 
 static int admin_get_root_container(void *address)
 {
-	struct device *dev = g_admin_ctx.dev;
 	int ret = 0;
 
 	/* Lock communication channel */
@@ -300,7 +287,7 @@ static int admin_get_root_container(void *address)
 	/* Check length against max */
 	if (g_request.response.length >= MAX_SO_CONT_SIZE) {
 		request_cancel();
-		dev_err(dev, "%s: response length exceeds maximum\n", __func__);
+		mc_dev_err("response length exceeds maximum\n");
 		ret = EREMOTEIO;
 		goto end;
 	}
@@ -315,9 +302,8 @@ end:
 	return ret;
 }
 
-static int admin_get_sp_container(void *address, uint32_t spid)
+static int admin_get_sp_container(void *address, u32 spid)
 {
-	struct device *dev = g_admin_ctx.dev;
 	int ret = 0;
 
 	/* Lock communication channel */
@@ -331,7 +317,7 @@ static int admin_get_sp_container(void *address, uint32_t spid)
 	/* Check length against max */
 	if (g_request.response.length >= MAX_SO_CONT_SIZE) {
 		request_cancel();
-		dev_err(dev, "%s: response length exceeds maximum\n", __func__);
+		mc_dev_err("response length exceeds maximum\n");
 		ret = EREMOTEIO;
 		goto end;
 	}
@@ -347,10 +333,8 @@ end:
 }
 
 static int admin_get_trustlet_container(void *address,
-					const struct mc_uuid_t *uuid,
-					uint32_t spid)
+					const struct mc_uuid_t *uuid, u32 spid)
 {
-	struct device *dev = g_admin_ctx.dev;
 	int ret = 0;
 
 	/* Lock communication channel */
@@ -364,7 +348,7 @@ static int admin_get_trustlet_container(void *address,
 	/* Check length against max */
 	if (g_request.response.length >= MAX_SO_CONT_SIZE) {
 		request_cancel();
-		dev_err(dev, "%s: response length exceeds maximum\n", __func__);
+		mc_dev_err("response length exceeds maximum\n");
 		ret = EREMOTEIO;
 		goto end;
 	}
@@ -379,10 +363,10 @@ end:
 	return ret;
 }
 
-static struct tbase_object *admin_get_trustlet(const struct mc_uuid_t *uuid,
-					       uint32_t is_gp, uint32_t *spid)
+static struct tee_object *admin_get_trustlet(const struct mc_uuid_t *uuid,
+					     bool is_gp, u32 *spid)
 {
-	struct tbase_object *obj = NULL;
+	struct tee_object *obj = NULL;
 	bool is_sp_tl;
 	int ret = 0;
 
@@ -396,7 +380,7 @@ static struct tbase_object *admin_get_trustlet(const struct mc_uuid_t *uuid,
 
 	/* Allocate memory */
 	is_sp_tl = g_request.response.service_type == SERVICE_TYPE_SP_TRUSTLET;
-	obj = tbase_object_alloc(is_sp_tl, g_request.response.length);
+	obj = tee_object_alloc(is_sp_tl, g_request.response.length);
 	if (!obj) {
 		request_cancel();
 		ret = -ENOMEM;
@@ -434,10 +418,10 @@ end:
 	mutex_unlock(&g_request.mutex);
 }
 
-static int tbase_object_make(uint32_t spid, struct tbase_object *obj)
+static int tee_object_make(u32 spid, struct tee_object *obj)
 {
 	struct mc_blob_len_info *l_info = (struct mc_blob_len_info *)obj->data;
-	uint8_t *address = &obj->data[obj->header_length + obj->length];
+	u8 *address = &obj->data[obj->header_length + obj->length];
 	struct mclf_header_v2 *thdr;
 	int ret;
 
@@ -476,31 +460,29 @@ err:
 	return ret;
 }
 
-struct tbase_object *tbase_object_read(uint32_t spid, uintptr_t address,
-				       size_t length)
+struct tee_object *tee_object_read(u32 spid, uintptr_t address, size_t length)
 {
-	struct device *dev = g_admin_ctx.dev;
 	char __user *addr = (char __user *)address;
-	struct tbase_object *obj;
-	uint8_t *data;
+	struct tee_object *obj;
+	u8 *data;
 	struct mclf_header_v2 thdr;
 	int ret;
 
 	/* Check length */
 	if (length < sizeof(thdr)) {
-		dev_err(dev, "%s: buffer shorter than header size\n", __func__);
+		mc_dev_err("buffer shorter than header size\n");
 		return ERR_PTR(-EFAULT);
 	}
 
 	/* Read header */
 	if (copy_from_user(&thdr, addr, sizeof(thdr))) {
-		dev_err(dev, "%s: header: copy_from_user failed\n", __func__);
+		mc_dev_err("header: copy_from_user failed\n");
 		return ERR_PTR(-EFAULT);
 	}
 
 	/* Allocate memory */
-	obj = tbase_object_alloc(thdr.service_type == SERVICE_TYPE_SP_TRUSTLET,
-				 length);
+	obj = tee_object_alloc(thdr.service_type == SERVICE_TYPE_SP_TRUSTLET,
+			       length);
 	if (!obj)
 		return ERR_PTR(-ENOMEM);
 
@@ -510,13 +492,13 @@ struct tbase_object *tbase_object_read(uint32_t spid, uintptr_t address,
 	/* Copy the rest of the data */
 	data += sizeof(thdr);
 	if (copy_from_user(data, &addr[sizeof(thdr)], length - sizeof(thdr))) {
-		dev_err(dev, "%s: data: copy_from_user failed\n", __func__);
+		mc_dev_err("data: copy_from_user failed\n");
 		vfree(obj);
 		return ERR_PTR(-EFAULT);
 	}
 
 	if (obj->header_length) {
-		ret = tbase_object_make(spid, obj);
+		ret = tee_object_make(spid, obj);
 		if (ret) {
 			vfree(obj);
 			return ERR_PTR(ret);
@@ -526,12 +508,12 @@ struct tbase_object *tbase_object_read(uint32_t spid, uintptr_t address,
 	return obj;
 }
 
-struct tbase_object *tbase_object_select(const struct mc_uuid_t *uuid)
+struct tee_object *tee_object_select(const struct mc_uuid_t *uuid)
 {
-	struct tbase_object *obj;
+	struct tee_object *obj;
 	struct mclf_header_v2 *thdr;
 
-	obj = tbase_object_alloc(false, sizeof(*thdr));
+	obj = tee_object_alloc(false, sizeof(*thdr));
 	if (!obj)
 		return ERR_PTR(-ENOMEM);
 
@@ -540,14 +522,13 @@ struct tbase_object *tbase_object_select(const struct mc_uuid_t *uuid)
 	return obj;
 }
 
-struct tbase_object *tbase_object_get(const struct mc_uuid_t *uuid,
-				      uint32_t is_gp_uuid)
+struct tee_object *tee_object_get(const struct mc_uuid_t *uuid, bool is_gp)
 {
-	struct tbase_object *obj;
-	uint32_t spid = 0;
+	struct tee_object *obj;
+	u32 spid = 0;
 
 	/* admin_get_trustlet creates the right object based on service type */
-	obj = admin_get_trustlet(uuid, is_gp_uuid, &spid);
+	obj = admin_get_trustlet(uuid, is_gp, &spid);
 	if (IS_ERR(obj))
 		return obj;
 
@@ -561,7 +542,7 @@ struct tbase_object *tbase_object_get(const struct mc_uuid_t *uuid,
 			return ERR_PTR(-ENOENT);
 		}
 
-		ret = tbase_object_make(spid, obj);
+		ret = tee_object_make(spid, obj);
 		if (ret) {
 			vfree(obj);
 			return ERR_PTR(ret);
@@ -571,20 +552,20 @@ struct tbase_object *tbase_object_get(const struct mc_uuid_t *uuid,
 	return obj;
 }
 
-static inline int load_driver(struct tbase_client *client,
+static inline int load_driver(struct tee_client *client,
 			      struct mc_admin_load_info *info)
 {
-	struct tbase_object *obj;
+	struct tee_object *obj;
 	struct mclf_header_v2 *thdr;
 	struct mc_identity identity = {
 		.login_type = TEEC_LOGIN_PUBLIC,
 	};
 	uintptr_t dci = 0;
-	uint32_t dci_len = 0;
-	uint32_t sid;
+	u32 dci_len = 0;
+	u32 sid;
 	int ret;
 
-	obj = tbase_object_read(info->spid, info->address, info->length);
+	obj = tee_object_read(info->spid, info->address, info->length);
 	if (IS_ERR(obj))
 		return PTR_ERR(obj);
 
@@ -595,7 +576,7 @@ static inline int load_driver(struct tbase_client *client,
 		 * it to communicate.
 		 */
 		dci_len = PAGE_SIZE;
-		ret = api_malloc_cbuf(client, dci_len, &dci, NULL);
+		ret = client_cbuf_create(client, dci_len, &dci, NULL);
 		if (ret)
 			goto end;
 	}
@@ -603,11 +584,14 @@ static inline int load_driver(struct tbase_client *client,
 	/* Open session */
 	ret = client_add_session(client, obj, dci, dci_len, &sid, false,
 				 &identity);
-	if (ret)
-		api_free_cbuf(client, dci);
-	else
-		dev_dbg(g_admin_ctx.dev, "driver loaded with sid %x", sid);
+	if (!ret)
+		mc_dev_devel("driver loaded with sid %x", sid);
 
+	/*
+	 * Always 'free' the buffer (will remain as long as used), never freed
+	 * otherwise
+	 */
+	client_cbuf_free(client, dci);
 end:
 	vfree(obj);
 	return ret;
@@ -615,39 +599,39 @@ end:
 
 static inline int load_token(struct mc_admin_load_info *token)
 {
-	struct tbase_mmu *mmu;
+	struct tee_mmu *mmu;
 	struct mcp_buffer_map map;
 	int ret;
 
-	mmu = tbase_mmu_create(current, (void *)(uintptr_t)token->address,
-			       token->length);
+	mmu = tee_mmu_create(current, (void *)(uintptr_t)token->address,
+			     token->length);
 	if (IS_ERR(mmu))
 		return PTR_ERR(mmu);
 
-	tbase_mmu_buffer(mmu, &map);
+	tee_mmu_buffer(mmu, &map);
 	ret = mcp_load_token(token->address, &map);
-	tbase_mmu_delete(mmu);
+	tee_mmu_delete(mmu);
 	return ret;
 }
 
 static inline int load_check(struct mc_admin_load_info *info)
 {
-	struct tbase_object *obj;
-	struct tbase_mmu *mmu;
+	struct tee_object *obj;
+	struct tee_mmu *mmu;
 	struct mcp_buffer_map map;
 	int ret;
 
-	obj = tbase_object_read(info->spid, info->address, info->length);
+	obj = tee_object_read(info->spid, info->address, info->length);
 	if (IS_ERR(obj))
 		return PTR_ERR(obj);
 
-	mmu = tbase_mmu_create(NULL, obj->data, obj->length);
+	mmu = tee_mmu_create(NULL, obj->data, obj->length);
 	if (IS_ERR(mmu))
 		return PTR_ERR(mmu);
 
-	tbase_mmu_buffer(mmu, &map);
+	tee_mmu_buffer(mmu, &map);
 	ret = mcp_load_check(obj, &map);
-	tbase_mmu_delete(mmu);
+	tee_mmu_delete(mmu);
 	return ret;
 }
 
@@ -716,7 +700,7 @@ static ssize_t admin_write(struct file *file, const char __user *user,
 			goto err;
 		}
 
-		/* TODO deal with several writes */
+		/* We do not deal with several writes */
 		if (len != g_request.size)
 			len = g_request.size;
 
@@ -745,14 +729,10 @@ end:
 static long admin_ioctl(struct file *file, unsigned int cmd,
 			unsigned long arg)
 {
-	struct tbase_client *client = file->private_data;
 	void __user *uarg = (void __user *)arg;
 	int ret = -EINVAL;
 
-	MCDRV_DBG("%u from %s", _IOC_NR(cmd), current->comm);
-
-	if (WARN(!client, "No client data available"))
-		return -EFAULT;
+	mc_dev_devel("%u from %s\n", _IOC_NR(cmd), current->comm);
 
 	switch (cmd) {
 	case MC_ADMIN_IO_GET_DRIVER_REQUEST: {
@@ -794,36 +774,49 @@ static long admin_ioctl(struct file *file, unsigned int cmd,
 		break;
 	}
 	case MC_ADMIN_IO_LOAD_DRIVER: {
+		struct tee_client *client = file->private_data;
 		struct mc_admin_load_info info;
 
-		ret = copy_from_user(&info, uarg, sizeof(info));
-		if (ret)
+		if (copy_from_user(&info, uarg, sizeof(info))) {
 			ret = -EFAULT;
-		else
-			ret = load_driver(client, &info);
+			break;
+		}
 
+		/* Make sure we have a local client */
+		if (!client) {
+			client = client_create(true);
+			/* Store client for future use/close */
+			file->private_data = client;
+		}
+
+		if (!client) {
+			ret = -ENOMEM;
+			break;
+		}
+
+		ret = load_driver(client, &info);
 		break;
 	}
 	case MC_ADMIN_IO_LOAD_TOKEN: {
 		struct mc_admin_load_info info;
 
-		ret = copy_from_user(&info, uarg, sizeof(info));
-		if (ret)
+		if (copy_from_user(&info, uarg, sizeof(info))) {
 			ret = -EFAULT;
-		else
-			ret = load_token(&info);
+			break;
+		}
 
+		ret = load_token(&info);
 		break;
 	}
 	case MC_ADMIN_IO_LOAD_CHECK: {
 		struct mc_admin_load_info info;
 
-		ret = copy_from_user(&info, uarg, sizeof(info));
-		if (ret)
+		if (copy_from_user(&info, uarg, sizeof(info))) {
 			ret = -EFAULT;
-		else
-			ret = load_check(&info);
+			break;
+		}
 
+		ret = load_check(&info);
 		break;
 	}
 	default:
@@ -844,18 +837,13 @@ static long admin_ioctl(struct file *file, unsigned int cmd,
  */
 static int admin_release(struct inode *inode, struct file *file)
 {
-	struct tbase_client *client = file->private_data;
-	struct device *dev = g_admin_ctx.dev;
-
-	if (!client)
-		return -EPROTO;
-
-	api_close_device(client);
-	file->private_data = NULL;
+	/* Close client if any */
+	if (file->private_data)
+		client_close((struct tee_client *)file->private_data);
 
 	/* Requests from driver to daemon */
 	mutex_lock(&g_request.states_mutex);
-	dev_warn(dev, "%s: daemon disconnected\n", __func__);
+	mc_dev_info("daemon disconnected\n");
 	g_request.server_state = NOT_CONNECTED;
 	/* A non-zero command indicates that a thread is waiting */
 	if (g_request.client_state != IDLE) {
@@ -864,7 +852,7 @@ static int admin_release(struct inode *inode, struct file *file)
 	}
 
 	mutex_unlock(&g_request.states_mutex);
-	atomic_set(&g_admin_ctx.daemon_counter, 0);
+	atomic_set(&admin_ctx.daemon_counter, 0);
 	/*
 	 * ret is quite irrelevant here as most apps don't care about the
 	 * return value from close() and it's quite difficult to recover
@@ -874,16 +862,12 @@ static int admin_release(struct inode *inode, struct file *file)
 
 static int admin_open(struct inode *inode, struct file *file)
 {
-	struct device *dev = g_admin_ctx.dev;
-	struct tbase_client *client;
-	int err;
-
 	/*
 	 * If the daemon is already set we can't allow anybody else to open
 	 * the admin interface.
 	 */
-	if (atomic_cmpxchg(&g_admin_ctx.daemon_counter, 0, 1) != 0) {
-		MCDRV_ERROR("Daemon is already connected");
+	if (atomic_cmpxchg(&admin_ctx.daemon_counter, 0, 1) != 0) {
+		mc_dev_err("Daemon is already connected\n");
 		return -EPROTO;
 	}
 
@@ -891,39 +875,25 @@ static int admin_open(struct inode *inode, struct file *file)
 	g_request.request_id = 42;
 
 	/* Setup the usual variables */
-	MCDRV_DBG("accept %s as tbase daemon", current->comm);
+	mc_dev_devel("accept %s as TEE daemon\n", current->comm);
 
 	/*
-	* daemon is connected so now we can safely suppose
-	* the secure world is loaded too
-	*/
-	if (!IS_ERR_OR_NULL(g_admin_ctx.tee_start_cb))
-		g_admin_ctx.tee_start_cb = ERR_PTR(g_admin_ctx.tee_start_cb());
-	if (IS_ERR(g_admin_ctx.tee_start_cb)) {
-		MCDRV_ERROR("Failed initializing the SW");
-		err = PTR_ERR(g_admin_ctx.tee_start_cb);
-		goto fail_connection;
-}
+	 * daemon is connected so now we can safely suppose
+	 * the secure world is loaded too
+	 */
+	if (admin_ctx.last_start_ret > 0)
+		admin_ctx.last_start_ret = admin_ctx.tee_start_cb();
 
-	/* Create client */
-	client = api_open_device(true);
-	if (!client) {
-		err = -ENOMEM;
-		goto fail_connection;
+	/* Failed to start the TEE, either now or before */
+	if (admin_ctx.last_start_ret) {
+		atomic_set(&admin_ctx.daemon_counter, 0);
+		return admin_ctx.last_start_ret;
 	}
-
-	/* Store client in user file */
-	file->private_data = client;
 
 	/* Requests from driver to daemon */
 	server_state_change(READY);
-	dev_info(dev, "%s: daemon connected\n", __func__);
-
+	mc_dev_info("daemon connected\n");
 	return 0;
-
-fail_connection:
-	atomic_set(&g_admin_ctx.daemon_counter, 0);
-	return err;
 }
 
 /* function table structure of this device driver. */
@@ -938,74 +908,27 @@ static const struct file_operations mc_admin_fops = {
 	.write = admin_write,
 };
 
-int mc_admin_init(struct class *mc_device_class, dev_t *out_dev,
-		  int (*tee_start_cb)(void))
+int mc_admin_init(struct cdev *cdev, int (*tee_start_cb)(void),
+		  void (*tee_stop_cb)(void))
 {
-	int err = 0;
-
-	if (!out_dev || !mc_device_class)
-		return -EINVAL;
-
-	atomic_set(&g_admin_ctx.daemon_counter, 0);
-
+	atomic_set(&admin_ctx.daemon_counter, 0);
 	/* Requests from driver to daemon */
 	mutex_init(&g_request.mutex);
 	mutex_init(&g_request.states_mutex);
 	init_completion(&g_request.client_complete);
 	init_completion(&g_request.server_complete);
 	mcp_register_crashhandler(mc_admin_sendcrashdump);
-
 	/* Create char device */
-	cdev_init(&g_admin_ctx.mc_admin_cdev, &mc_admin_fops);
-	err = alloc_chrdev_region(&g_admin_ctx.mc_dev_admin, 0, MC_DEV_MAX,
-				  "trustonic_tee");
-	if (err < 0) {
-		MCDRV_ERROR("failed to allocate char dev region");
-		goto fail_alloc_chrdev_region;
-	}
-
-	err = cdev_add(&g_admin_ctx.mc_admin_cdev, g_admin_ctx.mc_dev_admin, 1);
-	if (err) {
-		MCDRV_ERROR("admin device register failed");
-		goto fail_cdev_add;
-	}
-
-	g_admin_ctx.mc_admin_cdev.owner = THIS_MODULE;
-	g_admin_ctx.dev = device_create(mc_device_class, NULL,
-					g_admin_ctx.mc_dev_admin, NULL,
-					MC_ADMIN_DEVNODE);
-	if (IS_ERR(g_admin_ctx.dev)) {
-		err = PTR_ERR(g_admin_ctx.dev);
-		goto fail_dev_create;
-	}
-
-	g_admin_ctx.mc_dev_name.name = "<t-base";
-	g_admin_ctx.dev->driver = &g_admin_ctx.mc_dev_name;
-	*out_dev = g_admin_ctx.mc_dev_admin;
-
+	cdev_init(cdev, &mc_admin_fops);
 	/* Register the call back for starting the secure world */
-	g_admin_ctx.tee_start_cb = tee_start_cb;
-
-	MCDRV_DBG("done");
+	admin_ctx.tee_start_cb = tee_start_cb;
+	admin_ctx.tee_stop_cb = tee_stop_cb;
+	admin_ctx.last_start_ret = 1;
 	return 0;
-
-fail_dev_create:
-	cdev_del(&g_admin_ctx.mc_admin_cdev);
-
-fail_cdev_add:
-	unregister_chrdev_region(g_admin_ctx.mc_dev_admin, MC_DEV_MAX);
-
-fail_alloc_chrdev_region:
-	MCDRV_ERROR("fail with %d", err);
-	return err;
 }
 
-void mc_admin_exit(struct class *mc_device_class)
+void mc_admin_exit(void)
 {
-	device_destroy(mc_device_class, g_admin_ctx.mc_dev_admin);
-	cdev_del(&g_admin_ctx.mc_admin_cdev);
-	unregister_chrdev_region(g_admin_ctx.mc_dev_admin, MC_DEV_MAX);
-	/* Requests from driver to daemon */
-	mutex_destroy(&g_request.states_mutex);
-	MCDRV_DBG("done");
+	if (!admin_ctx.last_start_ret)
+		admin_ctx.tee_stop_cb();
 }

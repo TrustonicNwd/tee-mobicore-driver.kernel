@@ -12,4 +12,4 @@
  * GNU General Public License for more details.
  */
 #define MOBICORE_COMPONENT_BUILD_TAG \
-	"t-base-QC-MSM8996-Android-310A-V001-20150608_162610_17"
+	"t-base-QC-MSM8996-Android-310A-20150831_171839_50"
