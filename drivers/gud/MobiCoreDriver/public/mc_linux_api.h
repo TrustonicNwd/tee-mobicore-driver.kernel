@@ -11,7 +11,20 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  */
-#ifndef MOBICORE_COMPONENT_BUILD_TAG
-#define MOBICORE_COMPONENT_BUILD_TAG \
-	"Build by artcas01@artcas01-PC 12/03/15 15:14:58"
-#endif
+#ifndef _MC_LINUX_API_H_
+#define _MC_LINUX_API_H_
+
+#include <linux/types.h>
+
+/*
+ * Switch TEE active core to core_num, defined as linux
+ * core id
+ */
+int mc_switch_core(__u32 core_num);
+
+/*
+ * Return TEE active core as Linux core id
+ */
+__u32 mc_active_core(void);
+
+#endif /* _MC_LINUX_API_H_ */

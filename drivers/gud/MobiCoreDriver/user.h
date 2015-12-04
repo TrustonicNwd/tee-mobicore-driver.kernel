@@ -11,7 +11,15 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  */
-#ifndef MOBICORE_COMPONENT_BUILD_TAG
-#define MOBICORE_COMPONENT_BUILD_TAG \
-	"Build by artcas01@artcas01-PC 12/03/15 15:14:58"
-#endif
+
+#ifndef _USER_H_
+#define _USER_H_
+
+struct cdev;
+
+int mc_user_init(struct cdev *cdev);
+static inline void mc_user_exit(void)
+{
+}
+
+#endif /* _USER_H_ */
