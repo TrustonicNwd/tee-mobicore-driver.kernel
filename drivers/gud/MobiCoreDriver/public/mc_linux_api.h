@@ -11,13 +11,20 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  */
-#ifndef _MC_LOGGING_H_
-#define _MC_LOGGING_H_
+#ifndef _MC_LINUX_API_H_
+#define _MC_LINUX_API_H_
 
-void mc_logging_run(void);
-int  mc_logging_init(void);
-void mc_logging_exit(void);
-int mc_logging_start(void);
-void mc_logging_stop(void);
+#include <linux/types.h>
 
-#endif /* _MC_LOGGING_H_ */
+/*
+ * Switch TEE active core to core_num, defined as linux
+ * core id
+ */
+int mc_switch_core(int core_num);
+
+/*
+ * Return TEE active core as Linux core id
+ */
+int mc_active_core(void);
+
+#endif /* _MC_LINUX_API_H_ */

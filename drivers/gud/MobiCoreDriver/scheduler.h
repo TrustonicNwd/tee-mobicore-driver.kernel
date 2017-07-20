@@ -11,13 +11,15 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  */
-#ifndef _MC_LOGGING_H_
-#define _MC_LOGGING_H_
 
-void mc_logging_run(void);
-int  mc_logging_init(void);
-void mc_logging_exit(void);
-int mc_logging_start(void);
-void mc_logging_stop(void);
+#ifndef __MC_SCHEDULER_H__
+#define __MC_SCHEDULER_H__
 
-#endif /* _MC_LOGGING_H_ */
+int mc_scheduler_init(void);
+static inline void mc_scheduler_exit(void) {}
+int mc_scheduler_start(void);
+void mc_scheduler_stop(void);
+int mc_scheduler_suspend(void);
+int mc_scheduler_resume(void);
+
+#endif /* __MC_SCHEDULER_H__ */

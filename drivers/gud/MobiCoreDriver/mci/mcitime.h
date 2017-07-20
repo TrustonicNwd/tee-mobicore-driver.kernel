@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 TRUSTONIC LIMITED
+ * Copyright (c) 2015 TRUSTONIC LIMITED
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -11,13 +11,20 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  */
-#ifndef _MC_LOGGING_H_
-#define _MC_LOGGING_H_
 
-void mc_logging_run(void);
-int  mc_logging_init(void);
-void mc_logging_exit(void);
-int mc_logging_start(void);
-void mc_logging_stop(void);
+#ifndef MCITIME_H_
+#define MCITIME_H_
 
-#endif /* _MC_LOGGING_H_ */
+/*
+ * Trustonic TEE RICH OS Time:
+ * -seconds and nanoseconds since Jan 1, 1970, UTC
+ * -monotonic counter
+ */
+struct mcp_time {
+	u64	wall_clock_seconds;
+	u64	wall_clock_nsec;
+	u64	monotonic_seconds;
+	u64	monotonic_nsec;
+};
+
+#endif /* MCITIME_H_ */
